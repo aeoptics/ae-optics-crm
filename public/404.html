@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url=/ae-optics-crm/">
+    <script>
+      (function () {
+        const origin = window.location.origin;
+        const repoBase = '/ae-optics-crm/';
+        const pathname = window.location.pathname;
+        const search = window.location.search || '';
+        const hash = window.location.hash || '';
+
+        const relativePath = pathname.startsWith(repoBase)
+          ? pathname.slice(repoBase.length - 1)
+          : pathname;
+
+        const payload = encodeURIComponent(relativePath + search + hash);
+        window.location.replace(origin + repoBase + '?__gh=' + payload);
+      })();
+    </script>
+    <title>ae Optics CRM</title>
+  </head>
+  <body></body>
+</html>

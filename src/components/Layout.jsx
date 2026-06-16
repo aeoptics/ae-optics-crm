@@ -23,6 +23,7 @@ const NAV = [
   { to: '/expenses',     icon: TrendingDown,    label: 'المصروفات' },
   { to: '/employees',    icon: UserCheck,       label: 'الموظفون' },
   { to: '/integrations', icon: Link2,           label: 'Store Integrations' },
+  { to: '/shipping',     icon: Truck,           label: 'إعدادات الشحن' },
   { to: '/settings',     icon: Settings,        label: 'الإعدادات' },
 ]
 

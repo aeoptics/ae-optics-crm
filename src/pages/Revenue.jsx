@@ -21,13 +21,17 @@ export default function Revenue() {
   const [selMonth, setSelMonth] = useState(new Date().toISOString().slice(0,7))
   const [selYear, setSelYear]   = useState(String(new Date().getFullYear()))
 
+  const [orderItems, setOrderItems] = useState([])
+
   useEffect(() => {
     Promise.all([
       supabase.from('orders').select('*'),
-      supabase.from('expenses').select('*')
-    ]).then(([{data:ord},{data:exp}]) => {
+      supabase.from('expenses').select('*'),
+      supabase.from('order_items').select('*,orders(order_date,status)'),
+    ]).then(([{data:ord},{data:exp},{data:oi}]) => {
       setOrders(ord||[])
       setExpenses(exp||[])
+      setOrderItems(oi||[])
       setLoading(false)
     })
   }, [])
@@ -58,6 +62,10 @@ export default function Revenue() {
   const returned = filteredOrders.filter(o=>o.status==='Returned').length
   const deliveryRate = filteredOrders.length ? delivered.length/filteredOrders.length : 0
 
+  // Partial payment stats
+  const partialOrders   = filteredOrders.filter(o=>o.payment_status==='جزئي')
+  const totalRemaining  = filteredOrders.reduce((s,o)=>s+Math.max(0,(o.total_final||0)-(o.amount_paid||0)),0)
+
   // Monthly data
   const monthly = MONTHS.map((m,i) => {
     const mo   = delivered.filter(o=>o.order_date&&new Date(o.order_date).getMonth()===i)
@@ -87,6 +95,36 @@ export default function Revenue() {
   const expByCat = EXPENSE_CATEGORIES.map(c=>({
     name:c, total:filteredExpenses.filter(e=>e.category===c).reduce((s,e)=>s+(e.amount||0),0)
   })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total)
+
+  // Top frames from order_items
+  const framesSales = {}
+  orderItems.forEach(item => {
+    if (!item.frame_name) return
+    const orderDate = item.orders?.order_date
+    const isDelivered = item.orders?.status === 'Delivered'
+    if (!isDelivered) return
+    if (period==='month' && !orderDate?.startsWith(selMonth)) return
+    if (period==='year'  && !orderDate?.startsWith(selYear))  return
+    const key = item.frame_name
+    if (!framesSales[key]) framesSales[key] = { name:key, qty:0, revenue:0 }
+    framesSales[key].qty     += (item.qty || 1)
+    framesSales[key].revenue += (item.line_total || item.unit_price || 0)
+  })
+  const topFrames = Object.values(framesSales).sort((a,b)=>b.qty-a.qty).slice(0,5)
+
+  // Product type breakdown from order_items
+  const itemsByType = {}
+  orderItems.forEach(item => {
+    const orderDate  = item.orders?.order_date
+    const isDelivered = item.orders?.status === 'Delivered'
+    if (!isDelivered) return
+    if (period==='month' && !orderDate?.startsWith(selMonth)) return
+    if (period==='year'  && !orderDate?.startsWith(selYear))  return
+    const t = item.product_type || 'غير محدد'
+    if (!itemsByType[t]) itemsByType[t] = { count:0, revenue:0 }
+    itemsByType[t].count   += (item.qty || 1)
+    itemsByType[t].revenue += (item.line_total || 0)
+  })
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/></div>
 
@@ -125,11 +163,11 @@ export default function Revenue() {
       {/* Secondary KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
-          {label:'إجمالي التكاليف', value:fmt(totalCosts),    color:'text-red-600'},
-          {label:'المصروفات التشغيلية', value:fmt(totalExpenses), color:'text-orange-600'},
-          {label:'إجمالي الخصومات', value:fmt(discounts),     color:'text-amber-600'},
-          {label:'نسبة التسليم',    value:fmtPct(deliveryRate),color:'text-green-600'},
-          {label:'مرفوض + مرتجع',  value:refused+returned,   color:'text-red-600'},
+          {label:'إجمالي التكاليف',       value:fmt(totalCosts),      color:'text-red-600'},
+          {label:'المصروفات التشغيلية',   value:fmt(totalExpenses),   color:'text-orange-600'},
+          {label:'إجمالي الخصومات',       value:fmt(discounts),       color:'text-amber-600'},
+          {label:'نسبة التسليم',          value:fmtPct(deliveryRate), color:'text-green-600'},
+          {label:'مرفوض + مرتجع',        value:refused+returned,     color:'text-red-600'},
         ].map(({label,value,color})=>(
           <div key={label} className="card">
             <div className="text-xs text-gray-400">{label}</div>
@@ -137,6 +175,35 @@ export default function Revenue() {
           </div>
         ))}
       </div>
+
+      {/* Partial payment summary */}
+      {partialOrders.length > 0 && (
+        <div className="card bg-amber-50 border-amber-200">
+          <p className="text-xs font-bold text-amber-700 mb-3 flex items-center gap-2">
+            💰 الدفع الجزئي — {partialOrders.length} طلب
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <div className="text-xs text-gray-500">قيمة الطلبات الجزئية</div>
+              <div className="text-xl font-extrabold text-amber-700">
+                {fmt(partialOrders.reduce((s,o)=>s+(o.total_final||0),0))}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500">إجمالي المحصّل</div>
+              <div className="text-xl font-extrabold text-green-600">
+                {fmt(partialOrders.reduce((s,o)=>s+(o.amount_paid||0),0))}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500">إجمالي المتبقي</div>
+              <div className="text-xl font-extrabold text-red-600">
+                {fmt(totalRemaining)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Net profit formula */}
       <div className="card bg-gradient-to-l from-blue-50 to-indigo-50 border-blue-200">
@@ -215,6 +282,46 @@ export default function Revenue() {
             </div>
           )}
         </div>
+
+        {/* Top selling frames from order_items */}
+        {topFrames.length > 0 && (
+          <div className="card">
+            <h3 className="section-title">أكثر الفريمات مبيعاً</h3>
+            <div className="space-y-2 mt-2">
+              {topFrames.map(({ name, qty, revenue: rev }, i) => (
+                <div key={name} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0 ${
+                    i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-400' : i === 2 ? 'bg-orange-400' : 'bg-blue-200'
+                  }`}>{i + 1}</div>
+                  <div className="flex-1 truncate">
+                    <div className="text-sm font-semibold text-gray-800 truncate">{name}</div>
+                    <div className="text-xs text-gray-400">{qty} قطعة مباعة</div>
+                  </div>
+                  <div className="text-sm font-bold text-blue-600 text-left">{fmt(rev)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Product type from order_items */}
+        {Object.keys(itemsByType).length > 0 && (
+          <div className="card">
+            <h3 className="section-title">مبيعات حسب نوع المنتج (من العناصر)</h3>
+            <div className="grid grid-cols-3 gap-3">
+              {Object.entries(itemsByType).map(([type, { count, revenue: rev }]) => (
+                <div key={type} className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="text-2xl mb-1">
+                    {type === 'نظارات طبية' ? '👓' : type === 'نظارات شمسية' ? '🕶️' : '👁️'}
+                  </div>
+                  <div className="text-xs font-semibold text-gray-600">{type}</div>
+                  <div className="text-lg font-extrabold text-blue-700 mt-1">{count}</div>
+                  <div className="text-xs text-gray-400">{fmt(rev)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Expenses by category */}
         <div className="card">

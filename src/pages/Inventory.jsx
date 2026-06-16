@@ -357,7 +357,7 @@ export default function Inventory() {
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-gray-100 bg-gray-50/50">
-                            {['SKU', 'اللون', 'المقاس', 'الكمية', 'المتاح', 'سعر التكلفة', 'سعر البيع', 'الحالة', 'إجراءات'].map(h => (
+                            {['SKU', 'اللون', 'المقاس', 'الإجمالي', 'محجوز 🔒', 'متاح ✅', 'سعر التكلفة', 'سعر البيع', 'الحالة', 'إجراءات'].map(h => (
                               <th key={h} className="table-header text-xs">{h}</th>
                             ))}
                           </tr>
@@ -372,6 +372,9 @@ export default function Inventory() {
                                 <td className="table-cell text-sm font-semibold">{v.color || '—'}</td>
                                 <td className="table-cell text-xs font-mono" dir="ltr">{v.size || '—'}</td>
                                 <td className="table-cell text-center text-sm">{v.qty_total}</td>
+                                <td className="table-cell text-center">
+                                  <span className="text-xs text-orange-500 font-semibold">{v.qty_reserved || 0}</span>
+                                </td>
                                 <td className="table-cell text-center">
                                   <span className={`font-extrabold text-lg ${avail > 3 ? 'text-green-600' : avail > 0 ? 'text-yellow-600' : 'text-red-600'}`}>
                                     {avail}

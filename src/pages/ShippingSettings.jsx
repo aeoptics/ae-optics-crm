@@ -2,20 +2,72 @@ import { useState, useEffect } from 'react'
 import { supabase, GOVERNORATES, fmt } from '../lib/supabase'
 import { Plus, Save, X, Truck, Edit3, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 
+function CompanyForm({ company, onClose, onSave }) {
+  const isEdit = !!company?.id
+  const [f, setF] = useState({
+    name:  company?.name  || '',
+    notes: company?.notes || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+  const up = (k, v) => setF(p => ({ ...p, [k]: v }))
+
+  const handleSave = async () => {
+    if (!f.name.trim()) { setError('اسم الشركة مطلوب'); return }
+    setSaving(true)
+    const payload = { name: f.name.trim(), notes: f.notes.trim() || null }
+    let err
+    if (isEdit) ({ error: err } = await supabase.from('shipping_companies').update(payload).eq('id', company.id))
+    else ({ error: err } = await supabase.from('shipping_companies').insert(payload))
+    setSaving(false)
+    if (err) setError(err.message)
+    else onSave()
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box max-w-sm">
+        <div className="modal-header">
+          <h2 className="text-base font-bold text-gray-900">{isEdit ? 'تعديل شركة الشحن' : 'شركة شحن جديدة'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl"><X size={16}/></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="label">اسم الشركة *</label>
+            <input className="input" value={f.name} onChange={e => up('name', e.target.value)} placeholder="مثال: Bosta"/>
+          </div>
+          <div>
+            <label className="label">ملاحظات (اختياري)</label>
+            <textarea className="input h-20 resize-none" value={f.notes} onChange={e => up('notes', e.target.value)}/>
+          </div>
+          {error && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>}
+        </div>
+        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+          <button onClick={onClose} className="btn-secondary">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn-primary disabled:opacity-60">
+            {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <Save size={14}/>}
+            حفظ
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ShippingSettings() {
   const [companies, setCompanies] = useState([])
-  const [rates, setRates] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [expanded, setExpanded] = useState(null)
-  const [newName, setNewName] = useState('')
-  const [adding, setAdding] = useState(false)
+  const [rates, setRates]         = useState({})
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [expanded, setExpanded]   = useState(null)
+  const [showForm, setShowForm]   = useState(false)
+  const [editCompany, setEditCompany] = useState(null)
 
   const load = async () => {
     setLoading(true)
-    const {data:cos} = await supabase.from('shipping_companies').select('*').order('name')
-    const {data:rs}  = await supabase.from('shipping_rates').select('*')
-    setCompanies(cos||[])
+    const { data: cos } = await supabase.from('shipping_companies').select('*').order('name')
+    const { data: rs  } = await supabase.from('shipping_rates').select('*')
+    setCompanies(cos || [])
     const map = {}
     rs?.forEach(r => {
       if (!map[r.company_id]) map[r.company_id] = {}
@@ -24,14 +76,14 @@ export default function ShippingSettings() {
     setRates(map)
     setLoading(false)
   }
-  useEffect(()=>{load()},[])
+  useEffect(() => { load() }, [])
 
   const updateRate = (companyId, gov, field, val) => {
     setRates(prev => ({
       ...prev,
       [companyId]: {
         ...prev[companyId],
-        [gov]: { ...(prev[companyId]?.[gov]||{}), [field]: Number(val)||0 }
+        [gov]: { ...(prev[companyId]?.[gov] || {}), [field]: Number(val) || 0 }
       }
     }))
   }
@@ -44,20 +96,12 @@ export default function ShippingSettings() {
       await supabase.from('shipping_rates').upsert({
         company_id: companyId,
         governorate: gov,
-        customer_price: r.customer_price||0,
-        store_cost: r.store_cost||0
+        customer_price: r.customer_price || 0,
+        store_cost: r.store_cost || 0
       }, { onConflict: 'company_id,governorate' })
     }
     setSaving(false)
     alert('تم الحفظ ✅')
-  }
-
-  const addCompany = async () => {
-    if (!newName.trim()) return
-    await supabase.from('shipping_companies').insert({ name: newName.trim() })
-    setNewName('')
-    setAdding(false)
-    load()
   }
 
   const toggleActive = async (company) => {
@@ -66,58 +110,106 @@ export default function ShippingSettings() {
   }
 
   const deleteCompany = async (id) => {
-    if (!window.confirm('حذف شركة الشحن؟')) return
+    if (!window.confirm('هل تريد حذف شركة الشحن؟ سيتم حذف جميع أسعارها أيضاً.')) return
     await supabase.from('shipping_companies').delete().eq('id', id)
     load()
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/></div>
+  const handleSaveForm = () => {
+    setShowForm(false)
+    setEditCompany(null)
+    load()
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/>
+    </div>
+  )
+
+  const activeCount   = companies.filter(c => c.is_active).length
+  const inactiveCount = companies.filter(c => !c.is_active).length
 
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="page-title">إعدادات الشحن</h1>
-          <p className="text-sm text-gray-400 mt-0.5">أسعار الشحن لكل شركة ومحافظة</p>
+          <h1 className="page-title">إدارة شركات الشحن</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {companies.length} شركة — {activeCount} نشطة
+          </p>
         </div>
-        <button onClick={()=>setAdding(true)} className="btn-primary"><Plus size={16}/> شركة جديدة</button>
+        <button onClick={() => setShowForm(true)} className="btn-primary">
+          <Plus size={16}/> شركة جديدة
+        </button>
       </div>
 
-      {adding && (
-        <div className="card flex gap-3">
-          <input className="input flex-1" value={newName} onChange={e=>setNewName(e.target.value)}
-            placeholder="اسم شركة الشحن" onKeyDown={e=>e.key==='Enter'&&addCompany()}/>
-          <button onClick={addCompany} className="btn-primary">إضافة</button>
-          <button onClick={()=>setAdding(false)} className="btn-secondary"><X size={15}/></button>
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card bg-blue-50 border-0 flex items-center gap-3">
+          <Truck size={20} className="text-blue-600"/>
+          <div>
+            <div className="text-xs text-gray-500">إجمالي الشركات</div>
+            <div className="text-xl font-extrabold text-blue-600">{companies.length}</div>
+          </div>
         </div>
-      )}
+        <div className="card bg-green-50 border-0 flex items-center gap-3">
+          <Truck size={20} className="text-green-600"/>
+          <div>
+            <div className="text-xs text-gray-500">نشطة</div>
+            <div className="text-xl font-extrabold text-green-600">{activeCount}</div>
+          </div>
+        </div>
+        <div className="card bg-gray-50 border-0 flex items-center gap-3">
+          <Truck size={20} className="text-gray-400"/>
+          <div>
+            <div className="text-xs text-gray-500">غير نشطة</div>
+            <div className="text-xl font-extrabold text-gray-500">{inactiveCount}</div>
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-3">
         {companies.map(company => (
           <div key={company.id} className="card !p-0 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-gray-50"
-              onClick={()=>setExpanded(expanded===company.id?null:company.id)}>
+              onClick={() => setExpanded(expanded === company.id ? null : company.id)}>
               <div className="flex items-center gap-3">
                 <Truck size={18} className="text-blue-500"/>
-                <span className="font-bold text-gray-800">{company.name}</span>
-                <span className={`badge text-xs ${company.is_active?'pill-green':'pill-gray'}`}>
-                  {company.is_active?'نشط':'غير نشط'}
+                <div>
+                  <span className="font-bold text-gray-800">{company.name}</span>
+                  {company.notes && <p className="text-xs text-gray-400 mt-0.5">{company.notes}</p>}
+                </div>
+                <span className={`badge text-xs ${company.is_active ? 'pill-green' : 'pill-gray'}`}>
+                  {company.is_active ? 'نشط' : 'غير نشط'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={e=>{e.stopPropagation();toggleActive(company)}}
-                  className={`text-xs px-3 py-1 rounded-lg font-semibold ${company.is_active?'bg-red-50 text-red-600':'bg-green-50 text-green-600'}`}>
-                  {company.is_active?'تعطيل':'تفعيل'}
+                <button onClick={e => { e.stopPropagation(); setEditCompany(company); setShowForm(true) }}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
+                  <Edit3 size={14}/>
                 </button>
-                <button onClick={e=>{e.stopPropagation();deleteCompany(company.id)}} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400"><Trash2 size={14}/></button>
-                {expanded===company.id?<ChevronUp size={18} className="text-gray-400"/>:<ChevronDown size={18} className="text-gray-400"/>}
+                <button onClick={e => { e.stopPropagation(); toggleActive(company) }}
+                  className={`text-xs px-3 py-1 rounded-lg font-semibold ${company.is_active ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {company.is_active ? 'تعطيل' : 'تفعيل'}
+                </button>
+                <button onClick={e => { e.stopPropagation(); deleteCompany(company.id) }}
+                  className="p-1.5 hover:bg-red-50 rounded-lg text-red-400">
+                  <Trash2 size={14}/>
+                </button>
+                {expanded === company.id
+                  ? <ChevronUp size={18} className="text-gray-400"/>
+                  : <ChevronDown size={18} className="text-gray-400"/>}
               </div>
             </div>
 
             {/* Rates table */}
-            {expanded===company.id && (
+            {expanded === company.id && (
               <div className="border-t border-gray-100">
+                <div className="px-5 py-3 bg-gray-50 text-xs text-gray-500 font-semibold">
+                  أسعار الشحن لكل محافظة
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -130,23 +222,23 @@ export default function ShippingSettings() {
                     </thead>
                     <tbody>
                       {GOVERNORATES.map(gov => {
-                        const r = rates[company.id]?.[gov] || {}
-                        const diff = (r.customer_price||0) - (r.store_cost||0)
+                        const r    = rates[company.id]?.[gov] || {}
+                        const diff = (r.customer_price || 0) - (r.store_cost || 0)
                         return (
                           <tr key={gov} className="border-b border-gray-50 hover:bg-gray-50">
                             <td className="table-cell font-semibold text-sm text-gray-700">{gov}</td>
                             <td className="table-cell">
                               <input type="number" className="input w-24 text-center" min="0"
-                                value={r.customer_price||0}
-                                onChange={e=>updateRate(company.id,gov,'customer_price',e.target.value)}/>
+                                value={r.customer_price || 0}
+                                onChange={e => updateRate(company.id, gov, 'customer_price', e.target.value)}/>
                             </td>
                             <td className="table-cell">
                               <input type="number" className="input w-24 text-center" min="0"
-                                value={r.store_cost||0}
-                                onChange={e=>updateRate(company.id,gov,'store_cost',e.target.value)}/>
+                                value={r.store_cost || 0}
+                                onChange={e => updateRate(company.id, gov, 'store_cost', e.target.value)}/>
                             </td>
                             <td className="table-cell">
-                              <span className={`text-sm font-bold ${diff>=0?'text-green-600':'text-red-600'}`}>{diff} ج</span>
+                              <span className={`text-sm font-bold ${diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{diff} ج</span>
                             </td>
                           </tr>
                         )
@@ -155,15 +247,30 @@ export default function ShippingSettings() {
                   </table>
                 </div>
                 <div className="p-4 border-t border-gray-100 flex justify-end">
-                  <button onClick={()=>saveRates(company.id)} disabled={saving} className="btn-primary disabled:opacity-60">
-                    <Save size={15}/> {saving?'جارٍ الحفظ...':'حفظ الأسعار'}
+                  <button onClick={() => saveRates(company.id)} disabled={saving} className="btn-primary disabled:opacity-60">
+                    <Save size={15}/> {saving ? 'جارٍ الحفظ...' : 'حفظ الأسعار'}
                   </button>
                 </div>
               </div>
             )}
           </div>
         ))}
+
+        {companies.length === 0 && (
+          <div className="text-center py-16 text-gray-300">
+            <Truck size={40} className="mx-auto mb-3"/>
+            <p className="text-sm text-gray-400">لا توجد شركات شحن — أضف شركة جديدة</p>
+          </div>
+        )}
       </div>
+
+      {showForm && (
+        <CompanyForm
+          company={editCompany}
+          onClose={() => { setShowForm(false); setEditCompany(null) }}
+          onSave={handleSaveForm}
+        />
+      )}
     </div>
   )
 }

@@ -83,11 +83,11 @@ const LOGO_PATHS = `
 export function AELogoSquare({ size = 40 }) {
   return (
     <div
-      style={{ width: size, height: size, backgroundColor: AE_GREEN, borderRadius: size * 0.22 }}
+      style={{ width: size, height: size, backgroundColor: AE_GREEN, borderRadius: size * 0.22, overflow: 'hidden' }}
       className="flex items-center justify-center flex-shrink-0 shadow-lg"
     >
-      {/* رمز ae المبسط للأيقونة الصغيرة */}
-      <svg viewBox="300 340 620 580" width={size * 0.72} height={size * 0.72}>
+      {/* رمز ae المبسط للأيقونة الصغيرة - viewBox محسّن لعرض الشعار كاملاً */}
+      <svg viewBox="250 310 680 640" width={size * 0.80} height={size * 0.80} style={{ display: 'block' }}>
         <g dangerouslySetInnerHTML={{ __html: LOGO_PATHS }}/>
       </svg>
     </div>
